@@ -4,8 +4,6 @@ import sys
 
 from custom_gpt import CustomGPT
 
-
-
 if __name__ == '__main__':
         try:
             cgpt = CustomGPT()

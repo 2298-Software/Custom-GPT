@@ -1,16 +1,21 @@
 import json
+import logging
 import os
 from typing import List
 
 from llama_index import GPTVectorStoreIndex, SimpleDirectoryReader, \
-    ServiceContext, Document, StorageContext, load_index_from_storage, Response
+    ServiceContext, Document, StorageContext, load_index_from_storage
 
 
 class CustomGPT(object):
 
     def __init__(self):
+        logging.basicConfig()
+        self.log = logging.getLogger(self.__class__.__name__)
+        self.log.info('Program is starting')
         self.model_path = None
         self.data_path = None
+        self.training_documents = None
         self.model = None
         self.company_name = None
 
@@ -19,7 +24,7 @@ class CustomGPT(object):
             self.graceful_exit()
 
         conf_file_path = args[1]
-        print(f'Conf path is {conf_file_path}')
+        self.log.info(f'Conf path is {conf_file_path}')
         if not os.path.exists(conf_file_path):
             self.graceful_exit()
 
@@ -32,70 +37,57 @@ class CustomGPT(object):
         self.data_path = conf['data_path']
 
         while True:
-            mode = int(input(f"Welcome to {self.company_name}'s GPT library!\n "
-                             "\0: Exit Program"
-                             "\n1: Train new gpt"
-                             "\n2: Refresh Existing Model"
-                             "\n3: View available GPTs"
-                             "\n4: Submit a query to a GPT"
-                             "\n5: Load a model"
-                             "\n\nPlease choose an option: "))
+            mode = input(f"Welcome to {self.company_name}'s GPT library!\n "
+                         "\n1: Train New or Refresh Existing GPT"
+                         f"\n2: Chat with the {self.company_name} GPT"
+                         "\nExit: Exit Program"
+                         "\n\nPlease choose an option: ")
 
-            print('\n\n')
-            if mode in [1, 2]:
+            if mode == '1':
                 self.create_model()
-            elif mode == 4:
+            elif mode == '2':
                 self.load_model()
-            elif mode == 5:
-                if self.model is not None:
-                    self.query_model()
-                else:
-                    print('A model has not been loaded. Please load model before attempting to submit a prompt!')
-            elif mode == 3:
-                self.list_models()
-            elif mode == 0:
+                self.query_model()
+            elif mode == 'Exit':
                 print('Goodbye!')
                 exit(0)
             else:
-                print('selection option not available')
+                print('Please chose a list option.')
             print('\n\n')
 
     def graceful_exit(self):
-        print(f'Please provide the path to a configuration file as an argument to the program! ')
+        self.log.info(f'Please provide the path to a configuration file as an argument to the program! ')
         exit(1)
 
-    def load_training_data(self) -> List[Document]:
-        documents: List[Document] = SimpleDirectoryReader(self.data_path).load_data()
-        return documents
+    def load_training_data(self):
+        self.training_documents: List[Document] = SimpleDirectoryReader(self.data_path).load_data()
+        self.log.info('training data has been loaded')
 
     def create_model(self):
-        documents = self.load_training_data()
-        service_context = ServiceContext.from_defaults(chunk_size_limit=3000)
-        self.model = GPTVectorStoreIndex.from_documents(documents=documents, service_context=service_context,
+        self.load_training_data()
+        service_context = ServiceContext.from_defaults()
+        self.model = GPTVectorStoreIndex.from_documents(documents=self.training_documents,
+                                                        service_context=service_context,
                                                         show_progress=True)
+        self.save_model()
+        self.log.info('model has been created')
 
-    def save_model(self, model: GPTVectorStoreIndex):
-        model.storage_context.persist(persist_dir=self.model_path)
+    def save_model(self):
+        self.model.storage_context.persist(persist_dir=self.model_path)
+        self.log.info('model has been saved')
 
     def load_model(self):
         try:
             storage_context = StorageContext.from_defaults(persist_dir=self.model_path)
             self.model = load_index_from_storage(storage_context)
+            self.log.info('model has been loaded')
         except FileNotFoundError:
-            print(
-                f'You are attempting to query a model but a model does not exi3st in the path you provided: {self.model_path}')
+            self.log.info(
+                f'You are attempting to query a model but a model does not exist in the path you provided: {self.model_path}')
 
-    def query_model(self) -> Response:
+    def query_model(self):
         query_engine = self.model.as_query_engine()
         while True:
             prompt = input("Please provide a prompt/query/question for the GPT: ")
             response = query_engine.query(prompt)
-            return response
-
-    def list_models(self):
-        print(f'The following model(s) exist in path:\n')
-        models = os.listdir(self.model_path)
-        if len(models) == 0:
-            print('Zero models found in the provided directory!')
-        else:
-            print(models)
+            print(f'{response}\n')
